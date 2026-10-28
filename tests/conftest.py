@@ -15,7 +15,7 @@ def _gun(h, name):
 
 @pytest.fixture
 def pools():
-    return {"weapons": [_gun(1, "Alpha"), _gun(2, "Bravo"), _gun(3, "Charlie"), _gun(4, "Delta")]}
+    return {"weapons": [_gun(1, "Alpha"), _gun(2, "Bravo"), _gun(3, "Charlie"), _gun(4, "Delta"), _gun(5, "Echo")]}  # Echo is on no sheet
 
 
 @pytest.fixture

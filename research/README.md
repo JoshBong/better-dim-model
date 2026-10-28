@@ -35,7 +35,8 @@ else.
 | Ridge-constrained logistic: a per-perk ball tP plus a per-perk-per-type ball tT, fit by projected gradient descent | `ridge.py`, `ridge_grid.py`, `ridge_diag.py`, `ridge_grid.json` | U-shaped curve in t. On an honest split (choose t on Edge of Fate, test later) it's no better than counting votes, so it wasn't adopted |
 | Separate parameters for PvE and PvP | `tune_mode.py`, `tune_mode_wide.py` | Adopted (table below) |
 | Production builder matches research | `parity.py` | PvE 0.814, or 0.817 with votes (n=108); PvP 0.864, or 0.890 with votes (n=20) |
-| Scoring guns that aren't on the sheet | `offsheet.py` | Holds up; see below |
+| Scoring guns that aren't on the sheet | `offsheet.py` | Holds up; see below. Now in `model.py` (`off_sheet`, frozen with `"est": true`) |
+| Historical, curators-only models per era | `era_data.py`, `eras.py` | Beat the hindsight model on every era with enough lists; see below |
 
 ### Adopted parameters (`model.PARAMS`)
 
@@ -63,8 +64,31 @@ are really missing from the sheet were scored with strength taken from every she
 | PvE | 0.818 | 0.799 | 0.762 (n=10) |
 | PvP | 0.886 | 0.877 | 0.799 (n=3) |
 
-Hiding the sheet entry costs about 0.01–0.02. There are too few real off-sheet samples to rely on yet. This
-isn't in `model.py` yet.
+Hiding the sheet entry costs about 0.01–0.02. There are too few real off-sheet samples to rely on yet. Since
+2026-10-28 `model.build()` freezes these estimates for every random-roll pool weapon with no sheet entry (421 of
+1318 names), flagged `"est": true` so the UI can mark them; `estimates=False` restores the old behaviour.
+
+### Historical eras (`era_data.py`, `eras.py`)
+
+The sheets only exist in their current version, so a past era's model is curators-only: every perk starts
+equal and the ranking is the recency-weighted share of curator lists from that era *and older* endorsing it
+(`model.build_era`). Weapons are dated per name from DIM's d2-additional-info season tables (MIT, vendored in
+`data/ext/d2ai/`) and from the oldest curator list naming them; eras 0–2 can't be told apart by season (the
+table ends at season 28). Backtest: the era's lists split 5-fold by source; the era model is built without the
+held-out fold and scored on it, against today's full model (sheet + all votes, i.e. hindsight) on the same guns.
+
+| era | lists (PvE/PvP) | weapons | PvE era model | PvE hindsight | PvP era model | PvP hindsight |
+|---|---|---|---|---|---|---|
+| 1 Renegades / Lawless | 9 / 3 | 1318 | 0.675 (n=50) | 0.829 | 0.857 (n=16) | 0.898 |
+| 2 Edge of Fate / Ash & Iron | 12 / 0 | 1318 | 0.719 (n=48) | 0.783 | no PvP lists | |
+| 3 The Final Shape episodes | 30 / 18 | 1207 | **0.796** (n=322) | 0.767 | **0.865** (n=191) | 0.804 |
+| 4 Lightfall | 20 / 18 | 1062 | **0.833** (n=299) | 0.744 | **0.886** (n=213) | 0.778 |
+| 5 The Witch Queen | 37 / 30 | 923 | **0.850** (n=534) | 0.755 | **0.890** (n=295) | 0.775 |
+| 6 Beyond Light & older | 31 / 28 | 770 | **0.882** (n=471) | 0.726 | **0.848** (n=360) | 0.728 |
+
+From Final Shape back, the era model describes its own era better than today's model does (meta drift again,
+from the other side). The two newest eras have too few lists to stand alone, and the sheet is current there
+anyway, so the latest model stays sheet + votes and the eras are frozen from Final Shape backwards.
 
 ## Frozen model
 

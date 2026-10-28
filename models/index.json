@@ -1,0 +1,62 @@
+{
+  "latest": {
+    "id": "latest",
+    "label": "Latest (sheet + curators)",
+    "file": "dev-snapshot.json",
+    "kind": "sheet+curators"
+  },
+  "eras": [
+    {
+      "index": 3,
+      "id": "final-shape",
+      "label": "The Final Shape episodes",
+      "from": "2024-06",
+      "to": "2025-07",
+      "file": "eras/final-shape.json",
+      "kind": "curators",
+      "guns": {
+        "pve": 808,
+        "pvp": 808
+      }
+    },
+    {
+      "index": 4,
+      "id": "lightfall",
+      "label": "Lightfall",
+      "from": "2023-02",
+      "to": "2024-06",
+      "file": "eras/lightfall.json",
+      "kind": "curators",
+      "guns": {
+        "pve": 677,
+        "pvp": 677
+      }
+    },
+    {
+      "index": 5,
+      "id": "witch-queen",
+      "label": "The Witch Queen",
+      "from": "2022-02",
+      "to": "2023-02",
+      "file": "eras/witch-queen.json",
+      "kind": "curators",
+      "guns": {
+        "pve": 555,
+        "pvp": 555
+      }
+    },
+    {
+      "index": 6,
+      "id": "beyond-light",
+      "label": "Beyond Light & older",
+      "from": "2017-09",
+      "to": "2022-02",
+      "file": "eras/beyond-light.json",
+      "kind": "curators",
+      "guns": {
+        "pve": 418,
+        "pvp": 418
+      }
+    }
+  ]
+}

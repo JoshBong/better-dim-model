@@ -18,6 +18,11 @@ Shown score = 100 * raw / (best raw on that gun) * (1 - 2*NUDGE + NUDGE per reco
 so every gun's best roll is 100.
 The sheet's weapon tier is reported separately.
 
+Guns the sheets don't list (off-sheet) are scored as estimates (research/offsheet.py): every perk gets the
+unlisted formula with strength learned from all sheet guns of the same type, plus curator votes; the frozen
+entry carries "est": true so the UI can mark it. Historical eras (build_era) have no sheet at all: every gun
+is a curators-only estimate from the lists of that era and older.
+
 Parameters were tuned per mode on an honest split (pick on Edge of Fate-era curator lists,
 test on Renegades + Monument of Triumph lists): PvE AUC 0.805 -> 0.816, PvP 0.865 -> 0.894.
 """
@@ -69,6 +74,7 @@ class Gun:
     tier: str = ""
     v3: dict[str, float] = field(default_factory=dict)
     v4: dict[str, float] = field(default_factory=dict)
+    est: bool = False                 # off-sheet estimate (no sheet entry for this gun)
 
 
 def _named(entries) -> dict[str, list[int]]:
@@ -159,6 +165,56 @@ def rate(guns: dict[int, Gun], mode: str) -> None:
                     target[p] = prm["cap"] * min(1.0, s[p] / s_ref) ** prm["gamma"]
 
 
+def _pool_gun(w: dict) -> Gun | None:
+    """A pool weapon as an unrated Gun (no sheet entry); None when it has no random trait columns."""
+    c3, c4 = _named(w["c3"]), _named(w["c4"])
+    if len(c3) < 2 or len(c4) < 2:
+        return None
+    return Gun(hash=w["hash"], name=w["name"], wtype=w["type"], c3=c3, c4=c4,
+               barrels=_named(w.get("barrels", [])), mags=_named(w.get("mags", [])), est=True)
+
+
+def off_sheet(pools: dict, guns: dict[int, Gun], mode: str) -> dict[int, Gun]:
+    """Estimates for every random-roll pool weapon with no sheet entry under its name (research/offsheet.py):
+    each perk gets the unlisted formula with strength from ALL rated guns of the same type (no leave-one-out),
+    normalised within the column. Reissues of a sheet gun (same name) are not estimated: the extension maps them
+    to the rated entry by name."""
+    prm = PARAMS[mode]
+    listed = {norm(g.name) for g in guns.values()}
+    distinct: dict[tuple, Gun] = {}
+    for g in guns.values():
+        distinct.setdefault((norm(g.name), tuple(sorted(g.c3)), tuple(sorted(g.c4))), g)
+    g_n, g_w = Counter(), Counter()
+    t_n, t_w = defaultdict(Counter), defaultdict(Counter)
+    for g in distinct.values():
+        for p, pw in _contributions(g):
+            g_n[p] += 1; g_w[p] += pw
+            t_n[g.wtype][p] += 1; t_w[g.wtype][p] += pw
+    prior = sum(g_w.values()) / max(1, sum(g_n.values()))
+
+    def strength(wtype, p):
+        s_global = (g_w[p] + K_GLOBAL * prior) / (g_n[p] + K_GLOBAL)
+        return (t_w[wtype][p] + K_TYPE * s_global) / (t_n[wtype][p] + K_TYPE)
+
+    out: dict[int, Gun] = {}
+    seen: set[str] = set()
+    for w in pools["weapons"]:
+        n = norm(w["name"])
+        if n in listed or n in seen or w["hash"] in guns:
+            continue
+        g = _pool_gun(w)
+        if g is None:
+            continue
+        seen.add(n)
+        for col, target in ((g.c3, g.v3), (g.c4, g.v4)):
+            s = {p: strength(g.wtype, p) for p in col}
+            ref = max(max(s.values()), 1e-6)
+            for p in col:
+                target[p] = prm["cap"] * min(1.0, s[p] / ref) ** prm["gamma"]
+        out[g.hash] = g
+    return out
+
+
 def learn_votes(ballots: list[dict], guns_by_hash: dict[int, Gun], mode: str,
                 hash_to_name: dict[int, str]) -> dict[str, float]:
     """Share of curator ballots that endorse a perk when the gun offers it, recency-weighted.
@@ -200,10 +256,15 @@ def raw_score(g: Gun, a: str, b: str, votes: dict[str, float], mode: str) -> flo
     return pmean(g.v3[a], g.v4[b], prm["p"]) + prm["mu"] * pmean(votes.get(a, prior), votes.get(b, prior), VOTE_P)
 
 
-def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun], dict[str, float]]]) -> dict:
-    """Serialize to the compact form the extension scores with, keyed by plug hash."""
+def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun], dict[str, float]]],
+           kind: str = "sheet+curators", era: dict | None = None) -> dict:
+    """Serialize to the compact form the extension scores with, keyed by plug hash.
+    kind: "sheet+curators" (the latest model) or "curators" (a historical era, no sheet).
+    era: {"id", "label", "index", "from", "to"} for historical models."""
     out = {"patch": patch, "sheets_as_of": sheets_as_of, "params": PARAMS, "vote_p": VOTE_P, "nudge": NUDGE,
-           "modes": {}}
+           "kind": kind, "modes": {}}
+    if era:
+        out["era"] = era
     for mode, (guns, votes) in modes.items():
         prior = votes.get("__prior__", 0.0)
         guns_out, vote_out = {}, {}
@@ -216,6 +277,8 @@ def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun]
                 "rb": [h for n in g.rb for h in g.barrels.get(n, [])],
                 "rm": [h for n in g.rm for h in g.mags.get(n, [])],
             }
+            if g.est:
+                guns_out[str(g.hash)]["est"] = True
             for p, hs in {**g.c3, **g.c4}.items():
                 for h in hs:
                     vote_out[str(h)] = round(votes.get(p, prior), 4)
@@ -223,12 +286,47 @@ def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun]
     return out
 
 
-def build(patch: str, pools: dict, sheets: dict[str, list[dict]], sheets_as_of: dict, ballots: list[dict]) -> dict:
+def build(patch: str, pools: dict, sheets: dict[str, list[dict]], sheets_as_of: dict, ballots: list[dict],
+          estimates: bool = True) -> dict:
+    """The latest model: sheet-rated guns, plus (estimates=True) off-sheet estimates for the rest of the pool."""
     hash_to_name = {w["hash"]: norm(w["name"]) for w in pools["weapons"]}
     modes = {}
     for mode in ("pve", "pvp"):
         guns = join(pools, sheets.get(mode, []))
         rate(guns, mode)
+        if estimates:
+            guns = {**guns, **off_sheet(pools, guns, mode)}
         votes = learn_votes(ballots, guns, mode, hash_to_name)
         modes[mode] = (guns, votes)
     return freeze(patch, sheets_as_of, modes)
+
+
+def build_era(era: dict, pools: dict, ballots: list[dict], available: set[str] | None = None) -> dict:
+    """A historical, curators-only model for one era (era["index"]: 0 newest, as in curators.ERAS).
+
+    No sheet existed for past eras, so every perk starts at the same value and the ranking comes from the
+    recency-weighted share of curator lists from that era AND older that endorse the perk. `available` limits the
+    pool to weapon names that existed in that era (the caller dates weapons; None = every pool weapon).
+    """
+    idx = int(era["index"])
+    hash_to_name = {w["hash"]: norm(w["name"]) for w in pools["weapons"]}
+    old = [b for b in ballots if b["era"] >= idx]   # newest era in `old` is idx -> recency anchors there
+    modes = {}
+    for mode in ("pve", "pvp"):
+        guns: dict[int, Gun] = {}
+        seen: set[str] = set()
+        for w in pools["weapons"]:
+            n = norm(w["name"])
+            if n in seen or (available is not None and n not in available):
+                continue
+            g = _pool_gun(w)
+            if g is None:
+                continue
+            seen.add(n)
+            for col, target in ((g.c3, g.v3), (g.c4, g.v4)):
+                for p in col:
+                    target[p] = PARAMS[mode]["cap"]
+            guns[g.hash] = g
+        votes = learn_votes(old, guns, mode, hash_to_name)
+        modes[mode] = (guns, votes)
+    return freeze(era["id"], {}, modes, kind="curators", era=era)
