@@ -14,8 +14,8 @@ def score(frozen, mode, gun, a, b):
 def test_build_freezes_every_listed_gun(pools, sheets, ballots):
     f = model.build("v1", pools, sheets, {"pve": "t", "pvp": "t"}, ballots)
     assert f["patch"] == "v1"
-    assert set(f["modes"]["pve"]["guns"]) == {"1", "2", "3", "4", "5"}  # 5 = Echo, estimated
-    assert set(k for k, g in f["modes"]["pve"]["guns"].items() if g.get("est")) == {"5"}
+    assert set(f["modes"]["pve"]["guns"]) == {"1", "2", "3", "4", "5", "10"}  # 5 = Echo, 10 = Alpha (Adept): estimated
+    assert set(k for k, g in f["modes"]["pve"]["guns"].items() if g.get("est")) == {"5", "10"}
 
 
 def test_recommended_roll_beats_unlisted(pools, sheets, ballots):
@@ -58,7 +58,7 @@ def test_era_model_is_curators_only(pools, sheets, ballots):
     f = model.build_era(era, pools, old, available={"alpha", "charlie"})
     assert f["kind"] == "curators" and f["era"]["index"] == 2 and f["patch"] == "era-2"
     guns = f["modes"]["pve"]["guns"]
-    assert set(guns) == {"1", "3"}                      # Bravo, Delta and Echo did not exist in that era
+    assert set(guns) == {"1", "3"}                      # Bravo, Delta, Echo and the Adept did not exist in that era
     assert all(g["est"] for g in guns.values())
     # only era-2-or-older ballots count: the era-0 ballots for Alpha/Bravo are ignored, Charlie's Slideshot/Frenzy wins
     assert score(f, "pve", 3, 103, 203) > score(f, "pve", 3, 101, 201)

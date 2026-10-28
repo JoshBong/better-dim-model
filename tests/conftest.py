@@ -15,7 +15,8 @@ def _gun(h, name):
 
 @pytest.fixture
 def pools():
-    return {"weapons": [_gun(1, "Alpha"), _gun(2, "Bravo"), _gun(3, "Charlie"), _gun(4, "Delta"), _gun(5, "Echo")]}  # Echo is on no sheet
+    # Echo is on no sheet; Alpha (Adept) is a variant with its own hash and no sheet row (the extension inherits Alpha's tier)
+    return {"weapons": [_gun(1, "Alpha"), _gun(2, "Bravo"), _gun(3, "Charlie"), _gun(4, "Delta"), _gun(5, "Echo"), _gun(10, "Alpha (Adept)")]}
 
 
 @pytest.fixture
