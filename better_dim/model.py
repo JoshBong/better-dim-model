@@ -317,8 +317,8 @@ def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun]
         tier_est: dict[str, dict[str, str]] = {}
         for h, per_mode in (site.get("tq") or {}).items():
             for mode, letter in (per_mode or {}).items():
-                if isinstance(letter, str) and letter.startswith("~") and len(letter) == 2:
-                    tier_est.setdefault(str(h), {})[mode] = letter[1:]
+                if isinstance(letter, str) and len(letter) == 2 and letter[1] == "~":   # 'C~': the site's estimate
+                    tier_est.setdefault(str(h), {})[mode] = letter[0]
         if tier_est:
             out["tier_est"] = tier_est
     for mode, (guns, votes) in modes.items():
