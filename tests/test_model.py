@@ -63,3 +63,14 @@ def test_era_model_is_curators_only(pools, sheets, ballots):
     # only era-2-or-older ballots count: the era-0 ballots for Alpha/Bravo are ignored, Charlie's Slideshot/Frenzy wins
     assert score(f, "pve", 3, 103, 203) > score(f, "pve", 3, 101, 201)
     assert score(f, "pve", 1, 101, 201) == score(f, "pve", 1, 104, 204)  # no signal for Alpha in that era: flat
+
+
+def test_alias_maps_other_hashes_of_a_rated_name(pools, sheets, ballots):
+    # an old Alpha: different hash and an older perk pool without the sheet's picks, so join() drops it and off_sheet()
+    # leaves it alone (its name is on the sheet): only the alias rates it
+    old_alpha = {**pools["weapons"][0], "hash": 13, "name": "Alpha", "c3": [[999, "Mystery Perk"], [104, "Zen Moment"]], "c4": [[206, "Old Perk"], [204, "Headstone"]]}
+    pools = {"weapons": pools["weapons"] + [old_alpha]}
+    f = model.build("v1", pools, sheets, {}, ballots)
+    assert f["alias"] == {"13": "1"}                      # 10 = Alpha (Adept) is a gun itself (estimated), so no alias
+    era = model.build_era({"id": "e", "index": 0, "label": "x"}, pools, ballots)
+    assert era["alias"] == {"13": "1"}                    # build_era keeps one gun per name: the duplicate hash aliases it

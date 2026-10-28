@@ -256,15 +256,41 @@ def raw_score(g: Gun, a: str, b: str, votes: dict[str, float], mode: str) -> flo
     return pmean(g.v3[a], g.v4[b], prm["p"]) + prm["mu"] * pmean(votes.get(a, prior), votes.get(b, prior), VOTE_P)
 
 
+def aliases(pools: dict, modes: dict[str, tuple[dict[int, Gun], dict[str, float]]]) -> dict[str, str]:
+    """Pool weapon hash -> the frozen gun hash that rates it: every hash that is not itself a gun but shares its
+    (normalised) name with one (reissues, Adept/Harrowed/Timelost variants folded by the caller's names, old
+    versions with a different perk pool). A sheet-rated gun wins over an estimated one. The extension looks here
+    before falling back to names, so an old-pool reissue is rated even when DIM's names differ."""
+    by_name: dict[str, list[tuple[int, bool]]] = {}
+    for guns, _ in modes.values():
+        for g in guns.values():
+            lst = by_name.setdefault(norm(g.name), [])
+            if all(h != g.hash for h, _ in lst):
+                lst.append((g.hash, g.est))
+    known = {str(g.hash) for guns, _ in modes.values() for g in guns.values()}
+    out: dict[str, str] = {}
+    for w in pools["weapons"]:
+        h = str(w["hash"])
+        if h in known:
+            continue
+        cands = by_name.get(norm(w["name"]))
+        if cands:
+            out[h] = str(sorted(cands, key=lambda c: (c[1], c[0]))[0][0])
+    return out
+
+
 def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun], dict[str, float]]],
-           kind: str = "sheet+curators", era: dict | None = None) -> dict:
+           kind: str = "sheet+curators", era: dict | None = None, pools: dict | None = None) -> dict:
     """Serialize to the compact form the extension scores with, keyed by plug hash.
     kind: "sheet+curators" (the latest model) or "curators" (a historical era, no sheet).
-    era: {"id", "label", "index", "from", "to"} for historical models."""
+    era: {"id", "label", "index", "from", "to"} for historical models.
+    pools: when given, "alias" maps every other pool hash of a rated weapon's name to the rated hash."""
     out = {"patch": patch, "sheets_as_of": sheets_as_of, "params": PARAMS, "vote_p": VOTE_P, "nudge": NUDGE,
            "kind": kind, "modes": {}}
     if era:
         out["era"] = era
+    if pools is not None:
+        out["alias"] = aliases(pools, modes)
     for mode, (guns, votes) in modes.items():
         prior = votes.get("__prior__", 0.0)
         guns_out, vote_out = {}, {}
@@ -298,7 +324,7 @@ def build(patch: str, pools: dict, sheets: dict[str, list[dict]], sheets_as_of: 
             guns = {**guns, **off_sheet(pools, guns, mode)}
         votes = learn_votes(ballots, guns, mode, hash_to_name)
         modes[mode] = (guns, votes)
-    return freeze(patch, sheets_as_of, modes)
+    return freeze(patch, sheets_as_of, modes, pools=pools)
 
 
 def build_era(era: dict, pools: dict, ballots: list[dict], available: set[str] | None = None) -> dict:
@@ -329,4 +355,4 @@ def build_era(era: dict, pools: dict, ballots: list[dict], available: set[str] |
             guns[g.hash] = g
         votes = learn_votes(old, guns, mode, hash_to_name)
         modes[mode] = (guns, votes)
-    return freeze(era["id"], {}, modes, kind="curators", era=era)
+    return freeze(era["id"], {}, modes, kind="curators", era=era, pools=pools)
