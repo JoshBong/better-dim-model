@@ -1,3 +1,5 @@
+import json
+import os
 """Per-patch gear-score model. Built once per Destiny patch, frozen, served to every extension.
 
 Inputs (no Bungie API key anywhere):
@@ -279,6 +281,19 @@ def aliases(pools: dict, modes: dict[str, tuple[dict[int, Gun], dict[str, float]
     return out
 
 
+SITE_MAPS = os.path.join(os.path.dirname(__file__), "..", "research", "data", "ext", "site-maps.json")
+
+
+def site_maps(path: str = SITE_MAPS) -> dict:
+    """The visualizer's own maps (better-dim-viz, mailbox 038): alias (weapon hash -> its kept gun hash) and tq
+    (per gun and mode the tier letter; '~' = the site's estimate, '^' = borrowed from the base weapon). Optional."""
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
 def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun], dict[str, float]]],
            kind: str = "sheet+curators", era: dict | None = None, pools: dict | None = None) -> dict:
     """Serialize to the compact form the extension scores with, keyed by plug hash.
@@ -291,6 +306,21 @@ def freeze(patch: str, sheets_as_of: dict, modes: dict[str, tuple[dict[int, Gun]
         out["era"] = era
     if pools is not None:
         out["alias"] = aliases(pools, modes)
+        site = site_maps()
+        known = {str(g.hash) for guns, _ in modes.values() for g in guns.values()}
+        # union with the site's alias map: its entries for hashes we neither rate nor alias (ours win on conflicts)
+        for h, target in (site.get("alias") or {}).items():
+            if str(h) not in known and str(h) not in out["alias"] and str(target) in known:
+                out["alias"][str(h)] = str(target)
+        # the site's estimated tier letters for guns with no sheet tier ('~B'); '^' (borrowed from the base) is
+        # what the extension already does by name, so only '~' is carried
+        tier_est: dict[str, dict[str, str]] = {}
+        for h, per_mode in (site.get("tq") or {}).items():
+            for mode, letter in (per_mode or {}).items():
+                if isinstance(letter, str) and letter.startswith("~") and len(letter) == 2:
+                    tier_est.setdefault(str(h), {})[mode] = letter[1:]
+        if tier_est:
+            out["tier_est"] = tier_est
     for mode, (guns, votes) in modes.items():
         prior = votes.get("__prior__", 0.0)
         guns_out, vote_out = {}, {}
