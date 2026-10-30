@@ -1,9 +1,9 @@
-# better-dim model
+# DiS (Destiny Item Scorer) model
 
 A gear-scoring model for Destiny 2 weapon rolls. It scores every roll 0 to 100 per mode (PvE, PvP) from the
 community tier sheets and about 250k curator wishlist rolls, and is rebuilt for each game patch.
 
-This repo is the model and the research behind it. The browser extension that uses it (badges in
+This repo is the model and the research behind it. Browse every scored weapon, and the math behind the score, in the [DiS vault](https://joshhuang.me/dis/). The browser extension that uses it (badges in
 [DIM](https://app.destinyitemmanager.com), safe vault cleanup) is under construction.
 
 ## Results
